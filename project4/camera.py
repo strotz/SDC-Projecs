@@ -64,6 +64,59 @@ class Camera:
 
     def SaveCalibraton(self, fname):
         pack = {}
+        pack["img_size"] = self.image_size
         pack["mtx"] = self.mtx
         pack["dist"] = self.dist
         pickle.dump(pack, open(fname, "wb"))
+
+
+class ViewPointBuilder:
+    def __init__(self):
+        self.horizon = 0
+        self.bottom = 1.0
+        self.near = 1.0
+        self.far = 1.0
+
+    @staticmethod
+    def New():
+        return ViewPointBuilder()
+
+    def SetHorizonLine(self, horizon):
+        self.horizon = horizon
+
+    def SetBottomLine(self, bottom):
+        self.bottom = bottom
+
+    def SetNearView(self, near):
+        self.near = near
+
+    def SetFarView(self, far):
+        self.far = far
+
+    def BuildView(self, image_size):
+        # y
+        y=image_size[1]
+        horizon_px = y * self.horizon
+        bottom_px = y * self.bottom
+
+        # x
+        x = image_size[0]
+        far_left = x * (0.5 - self.far / 2)
+        far_right = x * (0.5 + self.far / 2)
+        near_left = x * (0.5 - self.near / 2)
+        near_right = x * (0.5 + self.near / 2)
+        ox = x * (0.5 - self.near / 2)
+
+        src = np.float32([[near_left,bottom_px],[far_left,horizon_px],[far_right,horizon_px],[near_right,bottom_px]])
+        dst = np.float32([[ox, y],[ox, 0],[x-ox, 0],[x-ox,y]])
+
+        return ViewPoint(src, dst)
+
+class ViewPoint:
+    def __init__(self, src, dest):
+        self.M = cv2.getPerspectiveTransform(src, dest)
+        self.Minverse = cv2.getPerspectiveTransform(dest, src)
+
+    def MakeBirdView(self, image):
+        img_size = (image.shape[1], image.shape[0])
+        return cv2.warpPerspective(image, self.M, img_size)
