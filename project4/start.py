@@ -38,9 +38,12 @@ binary[(ms==1)|(cs==1)]=1
 img_bv = view.MakeBirdView(img)
 binary_bv = view.MakeBirdView(binary)
 
-locator = line.LineLocator(img_size)
-l, r = locator.Locate(binary_bv) # search using windows
-l, r = locator.Adjust(binary_bv, l, r) # search using previous fit
+locator = line.LaneLocator(img_size)
+lane = locator.Locate(binary_bv) # search using windows
+lane = locator.Adjust(binary_bv, lane) # search using previous fit
+
+# TODO: add low pass filter for fit
+# TODO: add convolutions
 
 # Plot the result
 f, (ax1, ax2) = plt.subplots(1, 2, figsize=(24, 9))
@@ -48,13 +51,16 @@ f.tight_layout()
 ax1.imshow(img)
 ax1.set_title('Original Image', fontsize=50)
 
-out_img = np.dstack((binary_bv, binary_bv, binary_bv))*255
-l.DrawSearchArea(out_img)
-r.DrawSearchArea(out_img)
-ax2.imshow(out_img)
-l.PlotFit(ax2, img_size)
-r.PlotFit(ax2, img_size)
-ax2.set_title('Thresholded', fontsize=50)
+out_img = np.zeros_like(img_bv)
+lane.Draw(out_img)
+
+reverted = view.RevertBirdView(out_img)
+result = cv2.addWeighted(img, 1, reverted, 0.3, 0)
+
+ax2.imshow(result)
+ax2.set_title('Line Detected', fontsize=50)
 
 plt.subplots_adjust(left=0., right=1, top=0.9, bottom=0.)
 pylab.show()
+
+# result = cv2.addWeighted(undist, 1, newwarp, 0.3, 0)

@@ -120,3 +120,7 @@ class ViewPoint:
     def MakeBirdView(self, image):
         img_size = (image.shape[1], image.shape[0])
         return cv2.warpPerspective(image, self.M, img_size)
+
+    def RevertBirdView(self, image):
+        img_size = (image.shape[1], image.shape[0])
+        return cv2.warpPerspective(image, self.Minverse, img_size)

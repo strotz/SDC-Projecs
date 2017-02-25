@@ -99,11 +99,10 @@ class Line:
         for window in self.windows:
             cv2.rectangle(image, (window[0], window[1]), (window[2], window[3]), color, 2)
 
-    def DrawPoly(self, image, color):
+    def DrawPoly(self, image, color, alfa, margin):
         # Generate x and y values for plotting
         y = image.shape[0]
         fit = self.fit
-        margin = self.margin
 
         ploty = np.linspace(0, y-1, y)
         fitx = fit[0]*ploty**2 + fit[1]*ploty + fit[2]
@@ -119,16 +118,38 @@ class Line:
 
         # Draw the lane onto the warped blank image
         cv2.fillPoly(overlay, np.int_([line_pts]), color)
-        cv2.addWeighted(image, 1, overlay, 0.3, 0, image)
+        cv2.addWeighted(image, 1, overlay, alfa, 0, image)
 
     def DrawSearchArea(self, image, color=(0,255,0)):
         if not self.windows: # empty
-            self.DrawPoly(image, color)
+            self.DrawPoly(image, color, 0.3, self.margin)
         else:
             self.DrawWindows(image, color)
 
+class Lane:
+    def __init__(self, l, r):
+        self.l = l
+        self.r = r
 
-class LineLocator:
+    def Draw(self, image):
+        self.l.DrawPoly(image, (0, 0, 255), 1.0, 10)
+        self.r.DrawPoly(image, (0, 0, 255), 1.0, 10)
+
+        y = image.shape[0]
+        ploty = np.linspace(0, y-1, y)
+        left_fitx = self.l.fit[0]*ploty**2 + self.l.fit[1]*ploty + self.l.fit[2]
+        right_fitx = self.r.fit[0]*ploty**2 + self.r.fit[1]*ploty + self.r.fit[2]
+
+        # Recast the x and y points into usable format for cv2.fillPoly()
+        pts_left = np.array([np.transpose(np.vstack([left_fitx, ploty]))])
+        pts_right = np.array([np.flipud(np.transpose(np.vstack([right_fitx, ploty])))])
+        pts = np.hstack((pts_left, pts_right))
+
+        # Draw the lane onto the warped blank image
+        cv2.fillPoly(image, np.int_([pts]), (0,255, 0))
+
+
+class LaneLocator:
 
     def __init__(self, image_size):
         self.x = image_size[0]
@@ -168,14 +189,14 @@ class LineLocator:
         left_line = left.Fit()
         right_line = right.Fit()
 
-        return left_line, right_line
+        return Lane(left_line, right_line)
 
-    def Adjust(self, image, left, right, margin=100):
+    def Adjust(self, image, lane, margin=100):
         # Identify the x and y positions of all nonzero pixels in the image
         nonzero = image.nonzero()
 
         adjuster = LineAdjuster(nonzero, margin)
-        left_line = adjuster.Adjust(left)
-        right_line = adjuster.Adjust(right)
+        left_line = adjuster.Adjust(lane.l)
+        right_line = adjuster.Adjust(lane.r)
 
-        return left_line, right_line
+        return Lane(left_line, right_line)
