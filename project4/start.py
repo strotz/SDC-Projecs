@@ -39,7 +39,8 @@ img_bv = view.MakeBirdView(img)
 binary_bv = view.MakeBirdView(binary)
 
 locator = line.LineLocator(img_size)
-l, r = locator.Locate(binary_bv)
+l, r = locator.Locate(binary_bv) # search using windows
+l, r = locator.Adjust(binary_bv, l, r) # search using previous fit
 
 # Plot the result
 f, (ax1, ax2) = plt.subplots(1, 2, figsize=(24, 9))
@@ -48,8 +49,8 @@ ax1.imshow(img)
 ax1.set_title('Original Image', fontsize=50)
 
 out_img = np.dstack((binary_bv, binary_bv, binary_bv))*255
-l.DrawWindows(out_img)
-r.DrawWindows(out_img)
+l.DrawSearchArea(out_img)
+r.DrawSearchArea(out_img)
 ax2.imshow(out_img)
 l.PlotFit(ax2, img_size)
 r.PlotFit(ax2, img_size)

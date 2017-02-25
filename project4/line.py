@@ -48,13 +48,38 @@ class LineWindow:
         # Fit a second order polynomial to each
         fit = np.polyfit(py, px, 2)
 
-        line = Line(lane_inds, fit, self.windows)
-        return line
+        return Line(lane_inds, fit, self.margin, self.windows)
+
+class LineAdjuster:
+    def __init__(self, nonzero, margin):
+        self.nonzeroy = np.array(nonzero[0])
+        self.nonzerox = np.array(nonzero[1])
+
+        self.margin = margin
+
+    def Adjust(self, line):
+        fit = line.fit
+        margin = self.margin
+        nonzerox = self.nonzerox
+        nonzeroy = self.nonzeroy
+
+        lane_inds = ((nonzerox > (fit[0]*(nonzeroy**2) + fit[1]*nonzeroy + fit[2] - margin)) & (nonzerox < (fit[0]*(nonzeroy**2) + fit[1]*nonzeroy + fit[2] + margin)))
+
+        # Extract left and right line pixel positions
+        px = nonzerox[lane_inds]
+        py = nonzeroy[lane_inds]
+
+        # Fit a second order polynomial to each
+        fit = np.polyfit(py, px, 2)
+
+        return Line(lane_inds, fit, margin)
+
 
 class Line:
-    def __init__(self, lane_indexes, fit, windows):
+    def __init__(self, lane_indexes, fit, margin, windows=[]):
         self.lane_indexes = lane_indexes
         self.fit = fit
+        self.margin = margin
         self.windows = windows
 
     def PlotFit(self, canvas, image_size):
@@ -64,13 +89,44 @@ class Line:
         fit = self.fit
         fitx = fit[0] * ploty**2 + fit[1] * ploty + fit[2]
 
-        #out_img[nonzeroy[left_lane_inds], nonzerox[left_lane_inds]] = [255, 0, 0]
         canvas.plot(fitx, ploty, color='yellow')
 
-    def DrawWindows(self, image, color=(0,255,0)):
+    # Color in left and right line pixels
+    #out_img[nonzeroy[left_lane_inds], nonzerox[left_lane_inds]] = [255, 0, 0]
+
+    def DrawWindows(self, image, color):
         # Draw the windows on the visualization image
         for window in self.windows:
             cv2.rectangle(image, (window[0], window[1]), (window[2], window[3]), color, 2)
+
+    def DrawPoly(self, image, color):
+        # Generate x and y values for plotting
+        y = image.shape[0]
+        fit = self.fit
+        margin = self.margin
+
+        ploty = np.linspace(0, y-1, y)
+        fitx = fit[0]*ploty**2 + fit[1]*ploty + fit[2]
+
+        # Create an image to draw on and an image to show the selection window
+        overlay = np.zeros_like(image)
+
+        # Generate a polygon to illustrate the search window area
+        # And recast the x and y points into usable format for cv2.fillPoly()
+        line_window1 = np.array([np.transpose(np.vstack([fitx - margin, ploty]))])
+        line_window2 = np.array([np.flipud(np.transpose(np.vstack([fitx + margin, ploty])))])
+        line_pts = np.hstack((line_window1, line_window2))
+
+        # Draw the lane onto the warped blank image
+        cv2.fillPoly(overlay, np.int_([line_pts]), color)
+        cv2.addWeighted(image, 1, overlay, 0.3, 0, image)
+
+    def DrawSearchArea(self, image, color=(0,255,0)):
+        if not self.windows: # empty
+            self.DrawPoly(image, color)
+        else:
+            self.DrawWindows(image, color)
+
 
 class LineLocator:
 
@@ -82,7 +138,7 @@ class LineLocator:
     # nwindows - choose the number of sliding windows
     # margin - the width of the windows +/- margin
     # minpix - minimum number of pixels found to recener window
-    def Locate(self, image, nwindows = 9, margin=100, minpix=50, show=False):
+    def Locate(self, image, nwindows = 9, margin=100, minpix=50):
         # NOTE np encoding for images (y,x)
 
         # Identify the x and y positions of all nonzero pixels in the image
@@ -111,5 +167,15 @@ class LineLocator:
 
         left_line = left.Fit()
         right_line = right.Fit()
+
+        return left_line, right_line
+
+    def Adjust(self, image, left, right, margin=100):
+        # Identify the x and y positions of all nonzero pixels in the image
+        nonzero = image.nonzero()
+
+        adjuster = LineAdjuster(nonzero, margin)
+        left_line = adjuster.Adjust(left)
+        right_line = adjuster.Adjust(right)
 
         return left_line, right_line
