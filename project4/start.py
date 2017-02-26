@@ -18,6 +18,10 @@ test = '/Users/Shared/SDC/CarND-Advanced-Lane-Lines/test_images/test1.jpg'
 img = mpimg.imread(test)
 img_size = (img.shape[1], img.shape[0])
 
+# Define conversions in x and y from pixels space to meters
+ym_per_pix = 30/720 # meters per pixel in y dimension
+xm_per_pix = 3.7/700 # meters per pixel in x dimension
+
 cam.CalibrateFor(img_size)
 img = cam.Undistort(img)
 
@@ -41,6 +45,8 @@ binary_bv = view.MakeBirdView(binary)
 locator = line.LaneLocator(img_size)
 lane = locator.Locate(binary_bv) # search using windows
 lane = locator.Adjust(binary_bv, lane) # search using previous fit
+print(lane.l.CalculateRadius(xm_per_pix, ym_per_pix))
+print(lane.r.CalculateRadius(xm_per_pix, ym_per_pix))
 
 # TODO: add low pass filter for fit
 # TODO: add convolutions
@@ -59,8 +65,5 @@ result = cv2.addWeighted(img, 1, reverted, 0.3, 0)
 
 ax2.imshow(result)
 ax2.set_title('Line Detected', fontsize=50)
-
 plt.subplots_adjust(left=0., right=1, top=0.9, bottom=0.)
 pylab.show()
-
-# result = cv2.addWeighted(undist, 1, newwarp, 0.3, 0)

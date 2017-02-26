@@ -2,10 +2,11 @@ import numpy as np
 import cv2
 
 class LineWindow:
-    def __init__(self, nonzero, window_height, margin):
+    def __init__(self, y, nonzero, window_height, margin):
         # Create empty lists to receive left and right lane pixel indices
         self.lane_indexes = []
 
+        self.y = y
         self.nonzeroy = np.array(nonzero[0])
         self.nonzerox = np.array(nonzero[1])
 
@@ -46,9 +47,10 @@ class LineWindow:
         py = self.nonzeroy[lane_inds]
 
         # Fit a second order polynomial to each
+        # fits f(y) because line is often vertical and f(x) can have multiple values
         fit = np.polyfit(py, px, 2)
 
-        return Line(lane_inds, fit, self.margin, self.windows)
+        return Line(lane_inds, fit, self.y, self.margin, self.windows)
 
 class LineAdjuster:
     def __init__(self, nonzero, margin):
@@ -72,13 +74,13 @@ class LineAdjuster:
         # Fit a second order polynomial to each
         fit = np.polyfit(py, px, 2)
 
-        return Line(lane_inds, fit, margin)
-
+        return Line(lane_inds, fit, line.y, margin)
 
 class Line:
-    def __init__(self, lane_indexes, fit, margin, windows=[]):
+    def __init__(self, lane_indexes, fit, y, margin, windows=[]):
         self.lane_indexes = lane_indexes
         self.fit = fit
+        self.y = y
         self.margin = margin
         self.windows = windows
 
@@ -126,6 +128,34 @@ class Line:
         else:
             self.DrawWindows(image, color)
 
+    def ScaleFit(self, xm_per_pix, ym_per_pix):
+        # fit is in pixeles
+        A = self.fit[0]
+        B = self.fit[1]
+        C = self.fit[2]
+
+        xp_per_m = 1.0 / xm_per_pix
+        yp_per_m = 1.0 / ym_per_pix
+
+        # to convert to meters
+        # m/p * x => v (m), x = v * (p/m), that gives us new cooficients for fit
+        Am = A * yp_per_m * yp_per_m / xp_per_m
+        Bm = B * yp_per_m / xp_per_m
+        Cm = C / xp_per_m
+        y = self.y * ym_per_pix
+
+        return Am, Bm, Cm, y
+
+    def CalculateRadius(self, xm_per_pix=1.0, ym_per_pix=1.0):
+        # fit is in pixeles
+        #A = self.fit[0]
+        #B = self.fit[1]
+        #C = self.fit[2]
+        #y = self.y
+        A, B, C, y = self.ScaleFit(xm_per_pix, ym_per_pix)
+
+        return ((1 + (2 * A * y + B)**2)**1.5) / np.absolute(2 * A)
+
 class Lane:
     def __init__(self, l, r):
         self.l = l
@@ -166,8 +196,8 @@ class LaneLocator:
         nonzero = image.nonzero()
 
         window_height = int(self.y / nwindows)
-        left = LineWindow(nonzero, window_height, margin)
-        right = LineWindow(nonzero, window_height, margin)
+        left = LineWindow(self.y, nonzero, window_height, margin)
+        right = LineWindow(self.y, nonzero, window_height, margin)
 
         # finding base locations for left and right lines
         lower = image[self.midpoint:,:]
