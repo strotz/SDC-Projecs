@@ -84,14 +84,15 @@ class Line:
         self.margin = margin
         self.windows = windows
 
-    def PlotFit(self, canvas, image_size):
+    def PlotFit(self, image):
         # Generate x and y values for plotting
-        y = image_size[1]
+        y = image.shape[0]
         ploty = np.linspace(0, y-1, y)
         fit = self.fit
         fitx = fit[0] * ploty**2 + fit[1] * ploty + fit[2]
 
-        canvas.plot(fitx, ploty, color='yellow')
+        points = np.vstack((fitx, ploty)).T
+        cv2.polylines(image, np.int32([points]), False, (0,255,255), 3)
 
     # Color in left and right line pixels
     #out_img[nonzeroy[left_lane_inds], nonzerox[left_lane_inds]] = [255, 0, 0]
@@ -184,7 +185,12 @@ class LaneLocator:
     def __init__(self, image_size):
         self.x = image_size[0]
         self.y = image_size[1]
-        self.midpoint = int(self.x/2)
+        self.midpoint = int(self.y/2)
+
+    def BaseCalculation(self, image):
+        # finding base locations for left and right lines
+        lower = image[self.midpoint:,:]
+        return np.sum(lower, axis=0)
 
     # nwindows - choose the number of sliding windows
     # margin - the width of the windows +/- margin
@@ -200,8 +206,7 @@ class LaneLocator:
         right = LineWindow(self.y, nonzero, window_height, margin)
 
         # finding base locations for left and right lines
-        lower = image[self.midpoint:,:]
-        base = np.sum(lower, axis=0)
+        base = self.BaseCalculation(image)
         left.SetBase(np.argmax(base[:self.midpoint]))
         right.SetBase(np.argmax(base[self.midpoint:]) + self.midpoint)
 
