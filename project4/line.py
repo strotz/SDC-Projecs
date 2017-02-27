@@ -54,7 +54,7 @@ class LineWindow:
         # fits f(y) because line is often vertical and f(x) can have multiple values
         fit = np.polyfit(py, px, 2)
 
-        return Line(lane_inds, fit, self.y, self.margin, px, py, self.windows)
+        return Line(lane_inds, fit, self.y, self.margin, self.windows)
 
 class LineAdjuster:
     def __init__(self, nonzero, margin):
@@ -78,19 +78,15 @@ class LineAdjuster:
         # Fit a second order polynomial to each
         fit = np.polyfit(py, px, 2)
 
-        return Line(lane_inds, fit, line.y, margin, px, py)
+        return Line(lane_inds, fit, line.y, margin)
 
 class Line:
-    def __init__(self, lane_indexes, fit, y, margin, px, py, windows=[]):
+    def __init__(self, lane_indexes, fit, y, margin, windows=[]):
         self.lane_indexes = lane_indexes
         self.fit = fit
         self.y = y
         self.margin = margin
         self.windows = windows
-        self.px = px
-        self.py = py
-
-        print(px.shape)
 
     def PlotFit(self, image):
         # Generate x and y values for plotting
@@ -101,9 +97,6 @@ class Line:
 
         points = np.vstack((fitx, ploty)).T
         cv2.polylines(image, np.int32([points]), False, (0,255,255), 3)
-
-    # Color in left and right line pixels
-    #out_img[nonzeroy[left_lane_inds], nonzerox[left_lane_inds]] = [255, 0, 0]
 
     def DrawWindows(self, image, color):
         # Draw the windows on the visualization image
@@ -142,28 +135,24 @@ class Line:
         A = self.fit[0]
         B = self.fit[1]
         C = self.fit[2]
+        x = A * (self.y-1)**2 + B * (self.y-1) + C
 
         xp_per_m = 1.0 / xm_per_pix
         yp_per_m = 1.0 / ym_per_pix
 
         # to convert to meters
         # m/p * x => v (m), x = v * (p/m), that gives us new cooficients for fit
-        Am = A * yp_per_m * yp_per_m / xp_per_m
+        Am = A * yp_per_m**2 / xp_per_m
         Bm = B * yp_per_m / xp_per_m
         Cm = C / xp_per_m
-        y = self.y * ym_per_pix
+        y = (self.y - 1) / yp_per_m
 
-        return Am, Bm, Cm, y
+        return Am, Bm, Cm, y, x
 
-    def CalculateRadius(self, xm_per_pix=1.0, ym_per_pix=1.0):
-        # fit is in pixeles
-        #A = self.fit[0]
-        #B = self.fit[1]
-        #C = self.fit[2]
-        #y = self.y
-        A, B, C, y = self.ScaleFit(xm_per_pix, ym_per_pix)
+    def CalculateRadius(self, xm_per_pix, ym_per_pix):
 
-        return ((1 + (2 * A * y + B)**2)**1.5) / np.absolute(2 * A)
+        A, B, C, y, x = self.ScaleFit(xm_per_pix, ym_per_pix)
+        return ((1 + (2 * A * y + B)**2)**1.5) / np.absolute(2 * A), x
 
 class Lane:
     def __init__(self, l, r):
@@ -195,16 +184,23 @@ class Lane:
         self.r.PlotFit(out_img)
         return out_img
 
+    def CalaculateRadiuses(self, image_size, xm_per_pix, ym_per_pix):
+        lr, lx = self.l.CalculateRadius(xm_per_pix, ym_per_pix)
+        rr, rx = self.r.CalculateRadius(xm_per_pix, ym_per_pix)
+        offset = ((lx + rx) - image_size[0]) / 2 * xm_per_pix
+        return lr, rr, offset
+
 class LaneLocator:
 
     def __init__(self, image_size):
         self.x = image_size[0]
         self.y = image_size[1]
-        self.midpoint = int(self.y/2)
+        self.y_midpoint = int(self.y/2)
+        self.x_midpoint = int(self.x/2)
 
     def BaseCalculation(self, image):
         # finding base locations for left and right lines
-        lower = image[self.midpoint:,:]
+        lower = image[self.y_midpoint:,:]
         return np.sum(lower, axis=0)
 
     # nwindows - choose the number of sliding windows
@@ -222,8 +218,11 @@ class LaneLocator:
 
         # finding base locations for left and right lines
         base = self.BaseCalculation(image)
-        left.SetBase(np.argmax(base[:self.midpoint]))
-        right.SetBase(np.argmax(base[self.midpoint:]) + self.midpoint)
+        lbase = np.argmax(base[:self.x_midpoint])
+        left.SetBase(lbase)
+
+        rbase = np.argmax(base[self.x_midpoint:]) + self.x_midpoint
+        right.SetBase(rbase)
 
         # Step through the windows one by one
         for window in range(nwindows):
@@ -253,6 +252,7 @@ class LaneLocator:
 
     def SmartLocate(self, image, lane, nwindows=9, margin=100, minpix=50):
         if lane is None:
+            print('use sliding window')
             return self.Locate(image, nwindows, margin, minpix)
 
         nonzero = image.nonzero()
@@ -261,11 +261,10 @@ class LaneLocator:
         left_line = adjuster.Adjust(lane.l)
         right_line = adjuster.Adjust(lane.r)
 
-
-        if abs(left_line.fit[0] - right_line.fit[0]) > 1:
+        if abs(left_line.fit[0] - right_line.fit[0]) > 0.2:
             print('switching to sliding window')
             print(left_line.fit)
             print(right_line.fit)
-            return self.Locate(image)
+            return self.Locate(image, nwindows, margin, minpix)
 
         return self.Locate(image, nwindows, margin, minpix)
