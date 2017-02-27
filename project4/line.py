@@ -251,9 +251,9 @@ class LaneLocator:
 
         return Lane(left_line, right_line)
 
-    def SmartLocate(self, image, lane, margin=100, minpix=50):
+    def SmartLocate(self, image, lane, nwindows=9, margin=100, minpix=50):
         if lane is None:
-            return self.Locate(image)
+            return self.Locate(image, nwindows, margin, minpix)
 
         nonzero = image.nonzero()
 
@@ -261,8 +261,11 @@ class LaneLocator:
         left_line = adjuster.Adjust(lane.l)
         right_line = adjuster.Adjust(lane.r)
 
-        if left_line.px.shape[0] < minpix or right_line.px.shape[0] < minpix:
+
+        if abs(left_line.fit[0] - right_line.fit[0]) > 1:
             print('switching to sliding window')
+            print(left_line.fit)
+            print(right_line.fit)
             return self.Locate(image)
 
-        return Lane(left_line, right_line)
+        return self.Locate(image, nwindows, margin, minpix)

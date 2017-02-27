@@ -128,18 +128,17 @@ dataf='/Users/Shared/SDC/CarND-Advanced-Lane-Lines/'
 calibration_set_pattern = dataf + 'camera_cal/c*.jpg'
 
 #### source of the images
-test = dataf + 'test_images/test4.jpg'
-original = mpimg.imread(test)
-#videoin = dataf + 'project_video.mp4'
-#clip = VideoFileClip(videoin, audio=False)
-#original = clip.make_frame(0)
+#test = dataf + 'test_images/test4.jpg'
+#original = mpimg.imread(test)
+videoin = dataf + 'project_video.mp4'
+clip = VideoFileClip(videoin, audio=False)
+original = clip.make_frame(700)
 
 img_size = (original.shape[1], original.shape[0])
 
 processing = ImageProcessing(img_size, calibration_set_pattern)
 result = processing.UseSmartLocate(original)
-result = processing.UseSmartLocate(original)
-show_images(original, result)
+# open show_images(original, result)
 
 #lr = lane.l.CalculateRadius(xm_per_pix, ym_per_pix)
 #rr = lane.r.CalculateRadius(xm_per_pix, ym_per_pix)
@@ -147,11 +146,13 @@ show_images(original, result)
 # TODO: add low pass filter for fit
 # TODO: add convolutions
 
-#def process_clip_frame(image):
+def process_clip_frame(image):
     # Write some Text
+    global processing
     #font = cv2.FONT_HERSHEY_SIMPLEX
     #cv2.putText(img,'Hello World!',(10,500), font, 1,(255,255,255),2)
+    return processing.UseSmartLocate(image)
 
 # TODO: move to function
-#lane_found_clip = clip.fl_image(process_clip_frame)
-#lane_found_clip.write_videofile('out/lane_detected.mp4', audio=False)
+lane_found_clip = clip.fl_image(process_clip_frame)
+lane_found_clip.write_videofile('out/lane_detected.mp4', audio=False)
