@@ -75,24 +75,21 @@ class ImageProcessing:
         lane.Draw(out)
         reverted = self.view.RevertBirdView(out)
         result = cv2.addWeighted(original, 1, reverted, 0.3, 0)
+
+        img_size = (original.shape[1], original.shape[0])
+        lr, rr, offset = lane.CalaculateRadiuses(img_size, xm_per_pix, ym_per_pix)
+        text = 'left: {:6d}m, right: {:6d}m, offset: {:4.2f}m'.format(int(lr), int(rr), offset)
+        cv2.putText(result, text,(10,100), font, 1, (255,255,255), 2)
+
         return result
 
     def UseSmartLocate(self, original):
         img = self.cam.Undistort(original)
         binary = self.Filter(img)
         binary_bv = self.view.MakeBirdView(binary)
-
         lane = self.locator.SmartLocate(binary_bv, self.last_lane) # search using previous fit or sliding window
-
-        img_size = (binary_bv.shape[1], binary_bv.shape[0])
-        lr, rr, offset = lane.CalaculateRadiuses(img_size, xm_per_pix, ym_per_pix)
-        text = 'left: {:6d}m, right: {:6d}m, offset: {:4.2f}m'.format(int(lr), int(rr), offset)
-
         lane = self.ring.ApplyLPF(lane)
         result = self.ApplyLane(original, lane)
-
-        cv2.putText(result, text,(10,100), font, 1, (255,255,255), 2)
-
         self.last_lane = lane
         return result
 
