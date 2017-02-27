@@ -8,6 +8,7 @@ import matplotlib.image as mpimg
 import line
 from moviepy.editor import VideoFileClip
 import lpf
+import os.path
 
 demo = False
 # TODO: add convolutions
@@ -43,11 +44,18 @@ def binary_to_color(binary):
 class ImageProcessing:
     def __init__(self, img_size, calibration_set_pattern):
         self.img_size = img_size
-
-        calibration_set = camera.CameraCalibrationSet(calibration_set_pattern)
-        self.cam = camera.Camera()
-        self.cam.LoadCalibrationSet(calibration_set)
-        self.cam.CalibrateFor(self.img_size)
+          
+        packfile = './calibration.pk'
+        if os.path.isfile(packfile):
+            print('loading calibration')
+            self.cam = camera.Camera()
+            self.cam.LoadCalibration(packfile)
+        else:
+            calibration_set = camera.CameraCalibrationSet(calibration_set_pattern)
+            self.cam = camera.Camera()
+            self.cam.LoadCalibrationSet(calibration_set)
+            self.cam.CalibrateFor(self.img_size)
+            self.cam.SaveCalibraton(packfile)
 
         builder = camera.ViewPointBuilder.New()
         builder.SetHorizonLine(0.65)
@@ -62,12 +70,32 @@ class ImageProcessing:
 
         self.ring = lpf.Smoother(0.4)
 
+
     def Filter(self, image):
-        # apply filters
-        ms = gradients.magnitude_sobel(image, thresholds=(50,255))
-        cs = gradients.hsv_mix(image, 'S', thresholds=(100,255))
-        binary = np.zeros_like(image[:,:,0], dtype=np.uint8)
-        binary[(ms==1)|(cs==1)]=1
+        hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
+
+        yellow_low  = np.array([ 10, 80, 100])
+        yellow_high = np.array([ 40, 255, 255])
+        yellow_mask = cv2.inRange(hsv, yellow_low, yellow_high)
+
+        white_low  = np.array([  0, 0, 220], dtype=np.uint8)
+        white_high = np.array([ 180, 255, 255], dtype=np.uint8)
+        white_mask = cv2.inRange(hsv, white_low, white_high)
+
+        # sobel
+        sobel_kernel=3
+        gray = hsv[:,:,2]
+
+        sobel = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=sobel_kernel)
+        abs_sobel = np.absolute(sobel)
+        scaled_sobel = np.uint8(255*abs_sobel/np.max(abs_sobel))
+
+        binary = np.zeros_like(image[:,:,0], dtype=np.uint8) 
+
+        threshold_min = 5
+        threshold_max = 255
+        binary[(scaled_sobel >= threshold_min)&(scaled_sobel <= threshold_max)&((white_mask!=0)|(yellow_mask!=0))] = 1
+
         return binary
 
     def ApplyLane(self, original, lane):
@@ -116,13 +144,11 @@ class ImageProcessing:
         save_image(out_img, '06_sliding_windows_and_fitted_polynom.png')
 
         result = self.ApplyLane(original, lane)
-
         out_img = lane.DrawSearch(binary_bv)
         save_image(result, '07_lane_applied_to_original.png')
 
         lane = self.locator.Adjust(binary_bv, lane) # search using previous fit
         save_image(out_img, '08_fitting_adjusted.png')
-
         self.last_lane = lane
         return result
 
@@ -145,23 +171,32 @@ def ProcessTestImage(calibration_set_pattern):
     show_images(original, result)
 
 def ProcessVideoClip(calibration_set_pattern):
-    def process_clip_frame(image):
-        global processing
-        return processing.UseSmartLocate(image)
-
     #### source of the images
     videoin = dataf + 'project_video.mp4'
     clip = VideoFileClip(videoin, audio=False)
     original = clip.make_frame(0)
     img_size = (original.shape[1], original.shape[0])
     processing = ImageProcessing(img_size, calibration_set_pattern)
+    def process_clip_frame(image):
+        return processing.UseSmartLocate(image)
     result = processing.UseSmartLocate(original)
     lane_found_clip = clip.fl_image(process_clip_frame)
     lane_found_clip.write_videofile('out/lane_detected.mp4', audio=False)
 
 
+def TroubleshootVideoClip(calibration_set_pattern):
+    #### source of the images
+    videoin = dataf + 'project_video.mp4'
+    clip = VideoFileClip(videoin, audio=False)
+    original = clip.make_frame(41.4)
+    img_size = (original.shape[1], original.shape[0])
+    processing = ImageProcessing(img_size, calibration_set_pattern)
+    processing.Demo(original)
+    #show_images(original, result)
+
+
 #### source of data
-dataf='/Users/Shared/SDC/CarND-Advanced-Lane-Lines/'
+dataf='../../CarND-Advanced-Lane-Lines/'
 calibration_set_pattern = dataf + 'camera_cal/c*.jpg'
 
-ProcessTestImage(calibration_set_pattern)
+ProcessVideoClip(calibration_set_pattern)

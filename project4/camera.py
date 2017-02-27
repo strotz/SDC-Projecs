@@ -69,6 +69,13 @@ class Camera:
         pack["dist"] = self.dist
         pickle.dump(pack, open(fname, "wb"))
 
+    def LoadCalibration(self, fname):
+        with open(fname, 'rb') as f:
+            pack = pickle.load(f)
+            self.image_size = pack["img_size"]
+            self.mtx = pack["mtx"]
+            self.dist = pack["dist"]
+             
 
 class ViewPointBuilder:
     def __init__(self):

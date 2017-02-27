@@ -57,11 +57,16 @@ There are 2 classes that implement bird view modification defined in camera.py: 
 
 *** Step 4. Thresholded binary image ***
 
-Combination of XY sobel and saturation channel is used:
-- XY sobel is a square root of sum of squared X and Y sobel operations
-- Saturation channel of HSV color encoding helped to detect yellow lines that was almost hidden by switching to grayscale for sobel operation.
+[RGB]->[HSV]->[S channel]->[X Sobel] and
+([RGB]->[HSV]->[In Range White] or [RGB]->[HSV]->[In Range Yellow])
 
-code of image calculation implemented in gradients.py module. Specific call and combination of thresholds implemented in module start, class ImageProcessing, function Filter
+Method of point extraction were adjusted to given test images and video clip.
+1. RGB image converted to HSV space
+2. HSV color signal used with combination of ranges to extract yellow and white colored pixels.
+3. Signal from  Saturation channel combined with X Sobel operation used to detect contrast vertical lines
+4. White and Yellow signal masked by Sobel signal in order to reduce non-vertical noise   
+
+Specific call and combination of thresholds implemented in module start, class ImageProcessing, function Filter
 
 ![ALT binary](out/04_filtered_by_sobel_and_color.png)
 
@@ -110,11 +115,11 @@ it is implemented in ScaleFit and CalculateRadius methods of Line class
 ** Video Result **
 
 The clip with result of lane finding is uploaded to YouTube and available by
-https://youtu.be/2pT7RAJIdGs
+https://youtu.be/adUubY3suKY
 
 ** Discussion **
 
 1. It was fun project.
 2. I'm not convinced that it is possible to build static  method of gradient and color thresholding that will work for all conditions. It has to be dynamic and probably learned by neural net
 3. Seriously, please fix explanation of conversion from pixels to meters.
-4. Seems like curvature radius calculation depends on camera location. It would be nice to make an adjustment. 
+4. Seems like curvature radius calculation depends on camera location. It would be nice to make an adjustment.
