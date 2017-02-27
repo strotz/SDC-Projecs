@@ -126,29 +126,42 @@ class ImageProcessing:
         self.last_lane = lane
         return result
 
+def DemoCalibration(calibration_set_pattern):
+    calibration_set = camera.CameraCalibrationSet(calibration_set_pattern)
+    cam = camera.Camera()
+    cam.LoadCalibrationSet(calibration_set)
+    original=original = mpimg.imread(calibration_set.ImageAt(0))
+    img_size = (original.shape[1], original.shape[0])
+    cam.CalibrateFor(img_size)
+    img = cam.Undistort(original)
+    save_image(img, '00_undistorted.png')
+
+def ProcessTestImage(calibration_set_pattern):
+    test = dataf + 'test_images/test1.jpg'
+    original = mpimg.imread(test)
+    img_size = (original.shape[1], original.shape[0])
+    processing = ImageProcessing(img_size, calibration_set_pattern)
+    result = processing.Demo(original)
+    show_images(original, result)
+
+def ProcessVideoClip(calibration_set_pattern):
+    def process_clip_frame(image):
+        global processing
+        return processing.UseSmartLocate(image)
+
+    #### source of the images
+    videoin = dataf + 'project_video.mp4'
+    clip = VideoFileClip(videoin, audio=False)
+    original = clip.make_frame(0)
+    img_size = (original.shape[1], original.shape[0])
+    processing = ImageProcessing(img_size, calibration_set_pattern)
+    result = processing.UseSmartLocate(original)
+    lane_found_clip = clip.fl_image(process_clip_frame)
+    lane_found_clip.write_videofile('out/lane_detected.mp4', audio=False)
+
+
 #### source of data
 dataf='/Users/Shared/SDC/CarND-Advanced-Lane-Lines/'
 calibration_set_pattern = dataf + 'camera_cal/c*.jpg'
 
-#### source of the images
-#test = dataf + 'test_images/test4.jpg'
-#original = mpimg.imread(test)
-videoin = dataf + 'project_video.mp4'
-clip = VideoFileClip(videoin, audio=False)
-original = clip.make_frame(0)
-
-img_size = (original.shape[1], original.shape[0])
-
-processing = ImageProcessing(img_size, calibration_set_pattern)
-result = processing.UseSmartLocate(original)
-
-#result = processing.Demo(original)
-#show_images(original, result)
-
-def process_clip_frame(image):
-    # Write some Text
-    global processing
-    return processing.UseSmartLocate(image)
-
-lane_found_clip = clip.fl_image(process_clip_frame)
-lane_found_clip.write_videofile('out/lane_detected.mp4', audio=False)
+ProcessTestImage(calibration_set_pattern)
