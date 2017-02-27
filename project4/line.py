@@ -1,6 +1,10 @@
 import numpy as np
 import cv2
 
+def binary_to_color(binary):
+    color_binary = np.dstack((binary, binary, binary))
+    return color_binary * 255
+
 class LineWindow:
     def __init__(self, y, nonzero, window_height, margin):
         # Create empty lists to receive left and right lane pixel indices
@@ -50,7 +54,7 @@ class LineWindow:
         # fits f(y) because line is often vertical and f(x) can have multiple values
         fit = np.polyfit(py, px, 2)
 
-        return Line(lane_inds, fit, self.y, self.margin, self.windows)
+        return Line(lane_inds, fit, self.y, self.margin, px, py, self.windows)
 
 class LineAdjuster:
     def __init__(self, nonzero, margin):
@@ -74,15 +78,19 @@ class LineAdjuster:
         # Fit a second order polynomial to each
         fit = np.polyfit(py, px, 2)
 
-        return Line(lane_inds, fit, line.y, margin)
+        return Line(lane_inds, fit, line.y, margin, px, py)
 
 class Line:
-    def __init__(self, lane_indexes, fit, y, margin, windows=[]):
+    def __init__(self, lane_indexes, fit, y, margin, px, py, windows=[]):
         self.lane_indexes = lane_indexes
         self.fit = fit
         self.y = y
         self.margin = margin
         self.windows = windows
+        self.px = px
+        self.py = py
+
+        print(px.shape)
 
     def PlotFit(self, image):
         # Generate x and y values for plotting
@@ -179,6 +187,13 @@ class Lane:
         # Draw the lane onto the warped blank image
         cv2.fillPoly(image, np.int_([pts]), (0,255, 0))
 
+    def DrawSearch(self, image):
+        out_img = binary_to_color(image)
+        self.l.DrawSearchArea(out_img)
+        self.l.PlotFit(out_img)
+        self.r.DrawSearchArea(out_img)
+        self.r.PlotFit(out_img)
+        return out_img
 
 class LaneLocator:
 
@@ -233,5 +248,21 @@ class LaneLocator:
         adjuster = LineAdjuster(nonzero, margin)
         left_line = adjuster.Adjust(lane.l)
         right_line = adjuster.Adjust(lane.r)
+
+        return Lane(left_line, right_line)
+
+    def SmartLocate(self, image, lane, margin=100, minpix=50):
+        if lane is None:
+            return self.Locate(image)
+
+        nonzero = image.nonzero()
+
+        adjuster = LineAdjuster(nonzero, margin)
+        left_line = adjuster.Adjust(lane.l)
+        right_line = adjuster.Adjust(lane.r)
+
+        if left_line.px.shape[0] < minpix or right_line.px.shape[0] < minpix:
+            print('switching to sliding window')
+            return self.Locate(image)
 
         return Lane(left_line, right_line)
