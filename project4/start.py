@@ -9,8 +9,11 @@ import line
 from moviepy.editor import VideoFileClip
 import lpf
 import os.path
+import cardetect
+import image_tools as it
+from scipy.ndimage.measurements import label
 
-demo = False
+
 # TODO: add convolutions
 
 font = cv2.FONT_HERSHEY_SIMPLEX
@@ -19,32 +22,10 @@ font = cv2.FONT_HERSHEY_SIMPLEX
 ym_per_pix = 30.0 / 720.0 # meters per pixel in y dimension
 xm_per_pix = 3.7 / 700.0 # meters per pixel in x dimension
 
-def show_images(original, processed):
-    # Plot the result
-    f, (ax1, ax2) = plt.subplots(1, 2, figsize=(24, 9))
-    f.tight_layout()
-    ax1.imshow(original)
-    ax1.set_title('Original Image', fontsize=50)
-    ax2.imshow(processed)
-    ax2.set_title('Processed', fontsize=50)
-    plt.subplots_adjust(left=0., right=1, top=0.9, bottom=0.)
-    pylab.show()
-
-def save_image(image, name):
-    if demo == False:
-        plt.imshow(image)
-        pylab.show()
-        return
-    plt.imsave('out/' + name, image)
-
-def binary_to_color(binary):
-    color_binary = np.dstack((binary, binary, binary))
-    return color_binary * 255
-
 class ImageProcessing:
     def __init__(self, img_size, calibration_set_pattern):
         self.img_size = img_size
-          
+
         packfile = './calibration.pk'
         if os.path.isfile(packfile):
             print('loading calibration')
@@ -70,6 +51,10 @@ class ImageProcessing:
 
         self.ring = lpf.Smoother(0.4)
 
+        self.detector = cardetect.Detector()
+        self.detector.Load('model.h5')
+
+        self.detection_threshold = 2.0
 
     def Filter(self, image):
         hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
@@ -90,7 +75,7 @@ class ImageProcessing:
         abs_sobel = np.absolute(sobel)
         scaled_sobel = np.uint8(255*abs_sobel/np.max(abs_sobel))
 
-        binary = np.zeros_like(image[:,:,0], dtype=np.uint8) 
+        binary = np.zeros_like(image[:,:,0], dtype=np.uint8)
 
         threshold_min = 5
         threshold_max = 255
@@ -113,11 +98,19 @@ class ImageProcessing:
 
     def UseSmartLocate(self, original):
         img = self.cam.Undistort(original)
+        heatmap, labels = self.DetectCars(img)
         binary = self.Filter(img)
         binary_bv = self.view.MakeBirdView(binary)
         lane = self.locator.SmartLocate(binary_bv, self.last_lane) # search using previous fit or sliding window
         lane = self.ring.ApplyLPF(lane)
-        result = self.ApplyLane(original, lane)
+        result = self.ApplyLane(img, lane)
+        result = it.draw_labeled_bboxes(result, labels)
+
+        heatmap = it.binary_to_color(cv2.resize(heatmap, dsize=(240,140)))
+        y_offset = 60
+        x_offset = 1000
+        result[y_offset:y_offset+heatmap.shape[0], x_offset:x_offset+heatmap.shape[1],:] = heatmap
+
         self.last_lane = lane
         return result
 
@@ -125,32 +118,77 @@ class ImageProcessing:
     # step by step process to capture images
     #
     def Demo(self, original):
-        save_image(original, '01_first_image_from_clip.png')
+        it.save_image(original, '01_first_image_from_clip.png')
         img = self.cam.Undistort(original)
-        save_image(img, '02_undistorted.png')
+        it.save_image(img, '02_undistorted.png')
         img_bv = self.view.MakeBirdView(img)
-        save_image(img_bv, '03_bird_view.png')
+        it.save_image(img_bv, '03_bird_view.png')
         binary = self.Filter(img)
-        save_image(binary_to_color(binary), '04_filtered_by_sobel_and_color.png')
+        it.save_image(it.binary_to_color(binary), '04_filtered_by_sobel_and_color.png')
         binary_bv = self.view.MakeBirdView(binary)
-        save_image(binary_to_color(binary_bv), '05_filtered_bird_view.png')
-
-        #h = self.locator.BaseCalculation(binary_bv)
-        #plt.plot(h)
-        #pylab.show()
+        it.save_image(it.binary_to_color(binary_bv), '05_filtered_bird_view.png')
 
         lane = self.locator.Locate(binary_bv) # search using sliding windows
         out_img = lane.DrawSearch(binary_bv)
-        save_image(out_img, '06_sliding_windows_and_fitted_polynom.png')
+        it.save_image(out_img, '06_sliding_windows_and_fitted_polynom.png')
 
         result = self.ApplyLane(original, lane)
         out_img = lane.DrawSearch(binary_bv)
-        save_image(result, '07_lane_applied_to_original.png')
+        it.save_image(result, '07_lane_applied_to_original.png')
 
         lane = self.locator.Adjust(binary_bv, lane) # search using previous fit
-        save_image(out_img, '08_fitting_adjusted.png')
+        it.save_image(out_img, '08_fitting_adjusted.png')
         self.last_lane = lane
         return result
+
+    #
+    # step by step process to run car detection
+    #
+    def DetectCarsDemo(self, original):
+        img = self.cam.Undistort(original)
+        it.save_image(img, '10_undistorted.png')
+
+        self.PrepareDetection(img)
+
+        heat = np.zeros_like(img[:,:,0], dtype=np.float32)
+
+        for boxes in self.slides:
+            windows = np.asarray(it.split_image(img, boxes, resize_to=(32,32)))
+            predictions = self.detector.Detect(windows)
+            heat = it.add_heat_value(heat, boxes, predictions)
+            z = boxes[0][0][1]-boxes[0][0][0]
+            it.save_image(heat, "12_" + str(z) + "_heat.png")
+
+        heat = it.apply_threshold(heat, self.detection_threshold)
+        heatmap = np.clip(heat, 0, 255)
+
+        # Find final boxes from heatmap using label function
+        labels = label(heatmap)
+        draw_img = it.draw_labeled_bboxes(img, labels)
+        # it.save_image(draw_img, "13_detected.png")
+        it.show_heat(draw_img, heatmap)
+
+        return draw_img
+
+    def PrepareDetection(self, img):
+        #700-380=320
+        #320/32=10 320/52~6, 320/100~3
+        sizes = [32, 50, 100]
+        self.slides = []
+        for box_size in sizes:
+            boxes = it.slide_window(img, y_start_stop=[380,700], xy_window=(box_size,box_size))
+            self.slides.append(boxes)
+
+    def DetectCars(self, img):
+        heat = np.zeros_like(img[:,:,0], dtype=np.float32)
+        for boxes in self.slides:
+            windows = np.asarray(it.split_image(img, boxes, resize_to=(32,32)))
+            predictions = self.detector.Detect(windows)
+            heat = it.add_heat_value(heat, boxes, predictions)
+
+        heat = it.apply_threshold(heat, self.detection_threshold)
+        heatmap = np.clip(heat, 0, 255)
+        return heatmap, label(heatmap)
 
 def DemoCalibration(calibration_set_pattern):
     calibration_set = camera.CameraCalibrationSet(calibration_set_pattern)
@@ -160,7 +198,7 @@ def DemoCalibration(calibration_set_pattern):
     img_size = (original.shape[1], original.shape[0])
     cam.CalibrateFor(img_size)
     img = cam.Undistort(original)
-    save_image(img, '00_undistorted.png')
+    it.save_image(img, '00_undistorted.png')
 
 def ProcessTestImage(calibration_set_pattern):
     test = dataf + 'test_images/test1.jpg'
@@ -168,31 +206,36 @@ def ProcessTestImage(calibration_set_pattern):
     img_size = (original.shape[1], original.shape[0])
     processing = ImageProcessing(img_size, calibration_set_pattern)
     result = processing.Demo(original)
-    show_images(original, result)
+    it.show_images(original, result)
+
+def ProcessDetectionTestImage(calibration_set_pattern):
+    test = dataf + 'test_images/test1.jpg'
+    original = mpimg.imread(test)
+    img_size = (original.shape[1], original.shape[0])
+    processing = ImageProcessing(img_size, calibration_set_pattern)
+    result = processing.DetectCarsDemo(original)
+    it.show_images(original, result)
 
 def ProcessVideoClip(calibration_set_pattern):
-    #### source of the images
     videoin = dataf + 'project_video.mp4'
     clip = VideoFileClip(videoin, audio=False)
     original = clip.make_frame(0)
     img_size = (original.shape[1], original.shape[0])
     processing = ImageProcessing(img_size, calibration_set_pattern)
+    processing.PrepareDetection(original)
     def process_clip_frame(image):
         return processing.UseSmartLocate(image)
     result = processing.UseSmartLocate(original)
     lane_found_clip = clip.fl_image(process_clip_frame)
     lane_found_clip.write_videofile('out/lane_detected.mp4', audio=False)
 
-
 def TroubleshootVideoClip(calibration_set_pattern):
-    #### source of the images
     videoin = dataf + 'project_video.mp4'
     clip = VideoFileClip(videoin, audio=False)
     original = clip.make_frame(41.4)
     img_size = (original.shape[1], original.shape[0])
     processing = ImageProcessing(img_size, calibration_set_pattern)
     processing.Demo(original)
-    #show_images(original, result)
 
 
 #### source of data
