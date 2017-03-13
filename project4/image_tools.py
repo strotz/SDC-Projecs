@@ -44,7 +44,7 @@ def binary_to_color(binary):
     color_binary = np.dstack((binary, binary, binary))
     return color_binary * 255
 
-demo = False
+demo = True
 def save_image(image, name):
     if demo == False:
         plt.imshow(image)

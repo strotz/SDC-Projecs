@@ -1,5 +1,8 @@
 import cardetect
 
+import os
+os.system('set CUDA_VISIBLE_DEVICES=""')
+
 def train():
     data = cardetect.TrainingSet()
     data.LoadTrainingData()

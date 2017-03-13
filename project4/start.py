@@ -13,8 +13,8 @@ import cardetect
 import image_tools as it
 from scipy.ndimage.measurements import label
 
-
-# TODO: add convolutions
+import os
+os.system('set CUDA_VISIBLE_DEVICES=""')
 
 font = cv2.FONT_HERSHEY_SIMPLEX
 
@@ -148,31 +148,31 @@ class ImageProcessing:
         self.PrepareDetection(img)
         heat = np.zeros_like(img[:,:,0], dtype=np.float32)
         detector_expect=(self.detector.size, self.detector.size)
+        z=1
         for boxes in self.slides:
-            z = boxes[0][0][1]-boxes[0][0][0]
             it.save_image(it.draw_boxes(img, boxes), "12_" + str(z) + "_boxes.png")
             windows = it.split_image(img, boxes, resize_to=detector_expect)
             predictions = self.detector.Detect(windows)
             heat = it.add_heat_value(heat, boxes, predictions)
             it.save_image(heat, "13_" + str(z) + "_heat.png")
+            z += 1
 
         heat = it.apply_threshold(heat, self.detection_threshold)
-        print(np.max(heat))
+        it.save_image(heat, "14_total_heat.png")
 
         # Find final boxes from heatmap using label function
         labels = label(heat)
         draw_img = it.draw_labeled_bboxes(img, labels)
-        # it.save_image(draw_img, "13_detected.png")
-        it.show_heat(draw_img, heat)
+        it.save_image(draw_img, "15_detected.png")
+        #it.show_heat(draw_img, heat)
 
         return draw_img
 
     def PrepareDetection(self, img):
-        self.detection_threshold = 4.0
+        self.detection_threshold = 6.5
         self.heatmap_lpf = lpf.HeatmapSmoother(0.8)
         self.heatmap_ave = lpf.HeatmapAverege()
 
-        #sizes = [32, 50, 128]
         sizes = [64, 128]
         self.slides = []
         for box_size in sizes:
@@ -188,15 +188,24 @@ class ImageProcessing:
             predictions = self.detector.Detect(windows)
             heat = it.add_heat_value(heat, boxes, predictions)
 
+        # ALT 1
         #dig = np.zeros_like(img[:,:,0], dtype=np.uint8)
         #dig[heat>self.detection_threshold]=1
         #dig = np.copy(self.heatmap_ave.Apply(dig))
-        #dig[dig<2]=0
+        #dig[dig<=2]=0
         #heat = dig
 
-        heat = self.heatmap_lpf.ApplyLPF(heat)
+        # ALT 2
+        dig = np.zeros_like(img[:,:,0], dtype=np.float)
+        dig[heat>self.detection_threshold]=1.0
+        dig = self.heatmap_lpf.ApplyLPF(dig)
+        dig[dig<0.7]=0.0
+        #heat = it.apply_threshold(dig, 0.8)
+        heat = dig
 
-        heat = it.apply_threshold(heat, self.detection_threshold)
+        # ALT 3
+        #heat = self.heatmap_lpf.ApplyLPF(heat)
+        #heat = it.apply_threshold(heat, self.detection_threshold)
 
         #dig = np.clip(dig, 0, 1)
         return heat, label(heat)
@@ -229,7 +238,7 @@ def ProcessDetectionTestImage(calibration_set_pattern):
 
 def ProcessVideoClip(calibration_set_pattern):
     videoin = dataf + 'project_video.mp4'
-    clip = VideoFileClip(videoin, audio=False) #.subclip(5,12)
+    clip = VideoFileClip(videoin, audio=False) #.subclip(37,43)
     original = clip.make_frame(0)
     img_size = (original.shape[1], original.shape[0])
     print(img_size)
@@ -254,5 +263,5 @@ def TroubleshootVideoClip(calibration_set_pattern):
 dataf='../../CarND-Advanced-Lane-Lines/'
 calibration_set_pattern = dataf + 'camera_cal/c*.jpg'
 
-#ProcessDetectionTestImage(calibration_set_pattern)
-ProcessVideoClip(calibration_set_pattern)
+ProcessDetectionTestImage(calibration_set_pattern)
+# ProcessVideoClip(calibration_set_pattern)

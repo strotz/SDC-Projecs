@@ -57,11 +57,10 @@ class Detector:
         size = self.size
         model = Sequential()
         model.add(Lambda(lambda x: x/255.0 - 0.5, input_shape=(size, size, 3), output_shape=(size, size, 3)))
-        model.add(Convolution2D(16, 3, 3))
-        model.add(MaxPooling2D())
+        model.add(Convolution2D(12, 3, 3, subsample=(2, 2)))
         model.add(Dropout(0.5))
         model.add(Activation('relu'))
-        model.add(Convolution2D(32, 3, 3))
+        model.add(Convolution2D(24, 3, 3, subsample=(2, 2)))
         model.add(Dropout(0.5))
         model.add(Activation('relu'))
         model.add(Flatten())
@@ -72,12 +71,12 @@ class Detector:
         model.add(Activation('relu'))
         model.add(Dense(1))
         model.add(Activation('sigmoid'))
-        model.compile('rmsprop', 'binary_crossentropy', ['accuracy'])
+        model.compile('adam', 'binary_crossentropy', ['accuracy']) # rmsprop
         return model
 
     def Train(self, X, y):
         self.model = self.Build()
-        self.history = self.model.fit(X, y, nb_epoch=15, validation_split=0.1, batch_size=128)
+        self.history = self.model.fit(X, y, nb_epoch=25, validation_split=0.1, batch_size=128)
 
     def Test(self, X, y):
         #y_one_hot_test = self.label_binarizer.fit_transform(y)

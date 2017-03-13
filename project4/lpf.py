@@ -36,7 +36,7 @@ class HeatmapSmoother:
             return self.data
 
         self.data = self.data + self.alfa * (heat - self.data)
-        return self.data
+        return np.copy(self.data)
 
 class HeatmapAverege:
     def __init__(self, total = 5):
