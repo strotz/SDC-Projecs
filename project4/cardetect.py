@@ -15,11 +15,14 @@ from keras.layers.pooling import MaxPooling2D
 from keras.models import load_model
 
 class TrainingSet:
+    def __init__(self, size=32):
+        self.size = size
+
     def LoadImages(self, path):
         images = []
         for file in glob.glob(path, recursive=True):
             image = mpimg.imread(file)
-            image = imresize(image, (32, 32))
+            image = imresize(image, (self.size, self.size))
             images.append(image)
         return np.asarray(images)
 
@@ -47,9 +50,13 @@ class TrainingSet:
 
 
 class Detector:
+    def __init__(self, size=32):
+        self.size = size
+
     def Build(self):
+        size = self.size
         model = Sequential()
-        model.add(Lambda(lambda x: x/255.0 - 0.5, input_shape=(32, 32, 3), output_shape=(32, 32, 3)))
+        model.add(Lambda(lambda x: x/255.0 - 0.5, input_shape=(size, size, 3), output_shape=(size, size, 3)))
         model.add(Convolution2D(16, 3, 3))
         model.add(MaxPooling2D())
         model.add(Dropout(0.5))
@@ -70,7 +77,7 @@ class Detector:
 
     def Train(self, X, y):
         self.model = self.Build()
-        self.history = self.model.fit(X, y, nb_epoch=10, validation_split=0.1, batch_size=64)
+        self.history = self.model.fit(X, y, nb_epoch=15, validation_split=0.1, batch_size=128)
 
     def Test(self, X, y):
         #y_one_hot_test = self.label_binarizer.fit_transform(y)
@@ -81,7 +88,7 @@ class Detector:
             print('{}: {}'.format(metric_name, metric_value))
 
     def Detect(self, X):
-        return self.model.predict(X)
+        return self.model.predict(X, batch_size=128)
 
     def Save(self, fname):
         self.model.save(fname)

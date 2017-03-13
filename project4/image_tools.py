@@ -58,7 +58,7 @@ def save_image(image, name):
 # window size (x and y dimensions),
 # and overlap fraction (for both x and y)
 def slide_window(img, x_start_stop=[None, None], y_start_stop=[None, None],
-                    xy_window=(64, 64), xy_overlap=(0.5, 0.5)):
+                    xy_window=(32, 32), xy_overlap=(0.5, 0.5)):
     # If x and/or y start/stop positions not defined, set to image size
     if x_start_stop[0] == None: x_start_stop[0]=0
     if x_start_stop[1] == None: x_start_stop[1]=img.shape[1]
@@ -114,4 +114,4 @@ def split_image(image, boxes, resize_to=None):
             part = cv2.resize(part, resize_to)
         parts_list.append(part)
 
-    return parts_list
+    return np.asarray(parts_list)

@@ -54,8 +54,6 @@ class ImageProcessing:
         self.detector = cardetect.Detector()
         self.detector.Load('model.h5')
 
-        self.detection_threshold = 2.0
-
     def Filter(self, image):
         hsv = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
 
@@ -147,48 +145,61 @@ class ImageProcessing:
     def DetectCarsDemo(self, original):
         img = self.cam.Undistort(original)
         it.save_image(img, '10_undistorted.png')
-
         self.PrepareDetection(img)
-
         heat = np.zeros_like(img[:,:,0], dtype=np.float32)
-
+        detector_expect=(self.detector.size, self.detector.size)
         for boxes in self.slides:
-            windows = np.asarray(it.split_image(img, boxes, resize_to=(32,32)))
+            z = boxes[0][0][1]-boxes[0][0][0]
+            it.save_image(it.draw_boxes(img, boxes), "12_" + str(z) + "_boxes.png")
+            windows = it.split_image(img, boxes, resize_to=detector_expect)
             predictions = self.detector.Detect(windows)
             heat = it.add_heat_value(heat, boxes, predictions)
-            z = boxes[0][0][1]-boxes[0][0][0]
-            it.save_image(heat, "12_" + str(z) + "_heat.png")
+            it.save_image(heat, "13_" + str(z) + "_heat.png")
 
         heat = it.apply_threshold(heat, self.detection_threshold)
-        heatmap = np.clip(heat, 0, 255)
+        print(np.max(heat))
 
         # Find final boxes from heatmap using label function
-        labels = label(heatmap)
+        labels = label(heat)
         draw_img = it.draw_labeled_bboxes(img, labels)
         # it.save_image(draw_img, "13_detected.png")
-        it.show_heat(draw_img, heatmap)
+        it.show_heat(draw_img, heat)
 
         return draw_img
 
     def PrepareDetection(self, img):
-        #700-380=320
-        #320/32=10 320/52~6, 320/100~3
-        sizes = [32, 50, 100]
+        self.detection_threshold = 4.0
+        self.heatmap_lpf = lpf.HeatmapSmoother(0.8)
+        self.heatmap_ave = lpf.HeatmapAverege()
+
+        #sizes = [32, 50, 128]
+        sizes = [64, 128]
         self.slides = []
         for box_size in sizes:
-            boxes = it.slide_window(img, y_start_stop=[380,700], xy_window=(box_size,box_size))
+            boxes = it.slide_window(img, y_start_stop=[330,650], xy_window=(box_size,box_size), xy_overlap=(0.75, 0.75))
+            print(len(boxes))
             self.slides.append(boxes)
 
     def DetectCars(self, img):
-        heat = np.zeros_like(img[:,:,0], dtype=np.float32)
+        heat = np.zeros_like(img[:,:,0], dtype=np.float)
+        detector_expect=(self.detector.size, self.detector.size)
         for boxes in self.slides:
-            windows = np.asarray(it.split_image(img, boxes, resize_to=(32,32)))
+            windows = np.asarray(it.split_image(img, boxes, resize_to=detector_expect))
             predictions = self.detector.Detect(windows)
             heat = it.add_heat_value(heat, boxes, predictions)
 
+        #dig = np.zeros_like(img[:,:,0], dtype=np.uint8)
+        #dig[heat>self.detection_threshold]=1
+        #dig = np.copy(self.heatmap_ave.Apply(dig))
+        #dig[dig<2]=0
+        #heat = dig
+
+        heat = self.heatmap_lpf.ApplyLPF(heat)
+
         heat = it.apply_threshold(heat, self.detection_threshold)
-        heatmap = np.clip(heat, 0, 255)
-        return heatmap, label(heatmap)
+
+        #dig = np.clip(dig, 0, 1)
+        return heat, label(heat)
 
 def DemoCalibration(calibration_set_pattern):
     calibration_set = camera.CameraCalibrationSet(calibration_set_pattern)
@@ -218,9 +229,10 @@ def ProcessDetectionTestImage(calibration_set_pattern):
 
 def ProcessVideoClip(calibration_set_pattern):
     videoin = dataf + 'project_video.mp4'
-    clip = VideoFileClip(videoin, audio=False)
+    clip = VideoFileClip(videoin, audio=False) #.subclip(5,12)
     original = clip.make_frame(0)
     img_size = (original.shape[1], original.shape[0])
+    print(img_size)
     processing = ImageProcessing(img_size, calibration_set_pattern)
     processing.PrepareDetection(original)
     def process_clip_frame(image):
@@ -242,4 +254,5 @@ def TroubleshootVideoClip(calibration_set_pattern):
 dataf='../../CarND-Advanced-Lane-Lines/'
 calibration_set_pattern = dataf + 'camera_cal/c*.jpg'
 
+#ProcessDetectionTestImage(calibration_set_pattern)
 ProcessVideoClip(calibration_set_pattern)
